@@ -10,7 +10,6 @@ def check_file_empty(**kwargs):
     return "processing_group.replace_nulls"
 
 
-# Замена Nan и null на -
 def replace_nulls_func():
     df = pd.read_csv(DATA_PATH)
     df.fillna('-', inplace=True)
@@ -18,7 +17,6 @@ def replace_nulls_func():
     df.to_csv(FIRST_TEMP_STEP, index=False)
 
 
-# Сортировка по created_time(в таблице этот параметр называется at)
 def sort_by_created_time():
     df = pd.read_csv(FIRST_TEMP_STEP)
     df['at'] = pd.to_datetime(df['at'])
@@ -26,7 +24,6 @@ def sort_by_created_time():
     df.to_csv(SECOND_TEMP_STEP, index=False)
 
 
-# Фильтрация контента
 def clean_content_func():
     df = pd.read_csv(SECOND_TEMP_STEP)
 
@@ -45,7 +42,6 @@ def clean_content_func():
         os.remove(SECOND_TEMP_STEP)
 
 
-# Загрузка полученного датасета в бд
 def load_to_mongo():
     client = MongoClient("mongodb://root:password@mongodb:27017/")
     db = client["airflow_db"]
