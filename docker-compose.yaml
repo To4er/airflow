@@ -1,0 +1,99 @@
+version: '3.7'
+
+services:
+  # --- 1. MongoDB ---
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 2. PostgreSQL ---
+  postgres:
+    image: postgres:13
+    container_name: airflow_postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      retries: 5
+
+  # --- 3. Airflow Init (ВАЖНО: Создает таблицы и пользователя) ---
+  airflow-init:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: airflow_init
+    command: version
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - _AIRFLOW_DB_MIGRATE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- 4. Airflow Webserver ---
+  airflow-webserver:
+    image: apache/airflow:2.8.1-python3.11
+    command: webserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs  
+      - ./data:/opt/airflow/data 
+    environment:
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_fixed_secret_key_12345
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW_CONN_MONGODB_DEFAULT=mongodb://root:password@mongodb:27017/airflow_db
+      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-mongo==3.6.0 pandas pymongo
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully 
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+
+  # --- 5. Airflow Scheduler ---
+  airflow-scheduler:
+    image: apache/airflow:2.8.1-python3.11
+    command: scheduler
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs  
+      - ./data:/opt/airflow/data  
+    environment:
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_fixed_secret_key_12345 
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW_CONN_MONGODB_DEFAULT=mongodb://root:password@mongodb:27017/airflow_db
+      - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-mongo==3.6.0 pandas pymongo
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      airflow-webserver:
+        condition: service_started
+
+volumes:
+  mongodb_data:
+  postgres_data:
